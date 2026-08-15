@@ -11,6 +11,7 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/config/database.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/database.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/database.ts",
+    "migration:run:prod": "typeorm migration:run -d dist/config/database.js",
     "test": "jest"
   },
   "keywords": [

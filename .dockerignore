@@ -1,0 +1,12 @@
+node_modules
+dist
+tests
+docs
+.git
+.env
+.env.local
+coverage
+*.log
+.gitignore
+Dockerfile
+ecosystem.config.js
