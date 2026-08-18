@@ -33,6 +33,6 @@ describeIntegration('Cloudinary integration', () => {
     await CloudinaryService.deleteAsset(finalPublicId, CloudinaryResourceType.RAW);
     await expect(
       CloudinaryService.getAssetInfo(finalPublicId, CloudinaryResourceType.RAW),
-    ).rejects.toMatchObject({ code: 'CLOUDINARY_VERIFY_FAILED' });
+    ).rejects.toMatchObject({ code: 'CLOUDINARY_ASSET_NOT_FOUND' });
   }, 30000);
 });

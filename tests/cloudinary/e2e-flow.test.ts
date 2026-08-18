@@ -58,12 +58,18 @@ describeIntegration('Full upload flow (real Cloudinary + real DB)', () => {
     expect(list.body.data.files).toHaveLength(1);
     expect(list.body.data.files[0].id).toBe(fileId);
 
+    const preview = await request(app)
+      .get(`/api/files/${fileId}/preview`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(preview.status).toBe(200);
+    expect(preview.body.data.url).toContain(signed.cloudName);
+    expect(preview.body.data.url).toContain(encodeURIComponent(finalPublicId));
+
     const dl = await request(app)
       .get(`/api/files/${fileId}/download`)
       .set('Authorization', `Bearer ${token}`);
     expect(dl.status).toBe(200);
-    expect(dl.body.data.url).toContain(signed.cloudName);
-    expect(dl.body.data.url).toContain(finalPublicId);
+    expect(dl.text).toBe('hello from e2e');
 
     const del = await request(app).delete(`/api/files/${fileId}`).set('Authorization', `Bearer ${token}`);
     expect(del.status).toBe(200);
@@ -73,6 +79,6 @@ describeIntegration('Full upload flow (real Cloudinary + real DB)', () => {
 
     await expect(
       CloudinaryService.getAssetInfo(finalPublicId, CloudinaryResourceType.RAW),
-    ).rejects.toMatchObject({ code: 'CLOUDINARY_VERIFY_FAILED' });
+    ).rejects.toMatchObject({ code: 'CLOUDINARY_ASSET_NOT_FOUND' });
   }, 60000);
 });

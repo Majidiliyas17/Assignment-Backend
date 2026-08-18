@@ -189,7 +189,29 @@ Allowed extensions (default): `jpg, jpeg, png, webp, pdf, doc, docx, xls, xlsx, 
 }
 ```
 
-`resourceType` is `image` / `video` / `raw` based on the extension. For files ≥ 10MB the signature includes `chunk_size` (20MB) to enable chunked uploads.
+`resourceType` is `image` / `video` / `raw` based on the extension.
+
+**Cloudinary upload call (client side):**
+
+The signature returned above only covers the two parameters the client actually sends. To upload, the client must POST `multipart/form-data` to:
+
+```
+https://api.cloudinary.com/v1_1/{cloudName}/{resourceType}/upload
+```
+
+with exactly these fields in the body:
+
+| Field        | Required | Notes                                          |
+| ------------ | -------- | ---------------------------------------------- |
+| `file`       | ✅       | the file data                                 |
+| `api_key`    | ✅       | returned `apiKey`                             |
+| `timestamp`  | ✅       | returned `timestamp`                          |
+| `signature`  | ✅       | returned `signature`                          |
+| `public_id`  | ✅       | returned `publicId`                           |
+
+`cloud_name` and `resource_type` go in the URL path — never in the form body. **Do not send any other parameter** (e.g. `folder`, `chunk_size`, `tags`): a signed upload rejects any parameter that is not covered by the signature with `Invalid Signature`. Signature covers `public_id` + `timestamp` only.
+
+**Size limit:** Cloudinary accepts a single (non-chunked) upload up to **100 MB**. Larger files are rejected by the backend before signing with `413 CLOUDINARY_SINGLE_UPLOAD_LIMIT_EXCEEDED` (chunked uploads are not supported yet).
 
 **Errors**
 
@@ -200,6 +222,7 @@ Allowed extensions (default): `jpg, jpeg, png, webp, pdf, doc, docx, xls, xlsx, 
 | `UNSUPPORTED_FILE_TYPE` | 400    | Extension not allowed / dangerous |
 | `INVALID_MIME_TYPE`     | 400    | MIME does not match extension    |
 | `FILE_TOO_LARGE`        | 413    | `size` > `MAX_FILE_SIZE_MB`      |
+| `CLOUDINARY_SINGLE_UPLOAD_LIMIT_EXCEEDED` | 413 | `size` > Cloudinary's 100 MB single-upload limit |
 | `CLOUDINARY_NOT_CONFIGURED` | 500 | Cloudinary keys not set        |
 | `TOKEN_MISSING` / `INVALID_TOKEN` / `USER_NOT_FOUND` | 401 | Auth failure |
 
@@ -248,7 +271,8 @@ Finalize an upload: verify the asset on Cloudinary and create the file record. C
 | `VALIDATION_ERROR`           | 422    | Invalid body                     |
 | `INVALID_FILENAME` / `UNSUPPORTED_FILE_TYPE` / `INVALID_MIME_TYPE` | 400 | Upload metadata rejected |
 | `SIZE_MISMATCH`              | 400    | Declared size differs from asset > 5% |
-| `CLOUDINARY_VERIFY_FAILED`   | 500    | Asset not found / verification failed |
+| `CLOUDINARY_ASSET_NOT_FOUND` | 400    | Asset missing / still processing / wrong resource type |
+| `CLOUDINARY_VERIFY_FAILED`   | 500    | Cloudinary verification failed      |
 | `CLOUDINARY_NOT_CONFIGURED`  | 500    | Cloudinary keys not set          |
 
 ---

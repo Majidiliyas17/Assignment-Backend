@@ -54,4 +54,8 @@ export class AppError extends Error {
   static internal(message = 'Internal server error', code = 'INTERNAL_ERROR', details?: unknown): AppError {
     return new AppError(500, message, code, { isOperational: false, details });
   }
+
+  static badGateway(message = 'Upstream service error', code = 'BAD_GATEWAY', details?: unknown): AppError {
+    return new AppError(502, message, code, { details });
+  }
 }
