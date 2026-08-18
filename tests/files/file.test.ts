@@ -256,7 +256,7 @@ describe('File Management', () => {
     });
   });
 
-  describe('GET /api/files/:id/download', () => {
+  describe('GET /api/files/:id/preview', () => {
     let ownFileId: string;
 
     beforeAll(async () => {
@@ -265,10 +265,33 @@ describe('File Management', () => {
     });
 
     it('generates a delivery URL for the owner', async () => {
-      const res = await request(app).get(`/api/files/${ownFileId}/download`).set(authHeader(tokenA));
+      const res = await request(app).get(`/api/files/${ownFileId}/preview`).set(authHeader(tokenA));
 
       expect(res.status).toBe(200);
       expect(res.body.data.url).toContain('file-storage/owner/download-1');
+    });
+
+    it('cannot preview another user file (404)', async () => {
+      const res = await request(app).get(`/api/files/${ownFileId}/preview`).set(authHeader(tokenB));
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('FILE_NOT_FOUND');
+    });
+  });
+
+  describe('GET /api/files/:id/download', () => {
+    let ownFileId: string;
+
+    beforeAll(async () => {
+      const res = await completeUpload(tokenA, { publicId: 'file-storage/owner/download-1' });
+      ownFileId = res.body.data.id;
+    });
+
+    it('surfaces a clear 502 DOWNLOAD_FAILED when the storage upstream is unavailable', async () => {
+      const res = await request(app).get(`/api/files/${ownFileId}/download`).set(authHeader(tokenA));
+
+      expect(res.status).toBe(502);
+      expect(res.body.error.code).toBe('DOWNLOAD_FAILED');
     });
 
     it('cannot download another user file (404)', async () => {
