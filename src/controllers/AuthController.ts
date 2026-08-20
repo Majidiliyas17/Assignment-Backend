@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { AuthService } from '../services';
+import { AuthService, FileService } from '../services';
 import { ApiResponse } from '../utils';
 import { asyncHandler } from '../utils';
 
@@ -16,6 +16,7 @@ export class AuthController {
 
   static me = asyncHandler(async (req: Request, res: Response) => {
     const user = await AuthService.getCurrentUser(req.user.id);
-    res.status(200).json(ApiResponse.success(user, 'Current user'));
+    const storage = await FileService.getStorageUsage(req.user.id);
+    res.status(200).json(ApiResponse.success({ ...user, storage }, 'Current user'));
   });
 }

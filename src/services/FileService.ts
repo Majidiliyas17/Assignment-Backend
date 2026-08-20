@@ -1,11 +1,11 @@
 import { randomBytes } from 'crypto';
 import { CloudinaryResourceType, FileStatus, FileVisibility } from '../enums';
-import { fileRepository, FileListResult } from '../repositories';
+import { fileRepository, FileListResult, userRepository } from '../repositories';
 import { FileEntity } from '../entities';
 import { AppError } from '../utils';
 import { CloudinaryService } from './CloudinaryService';
 import { sanitizeFilename, validateAndNormalizeUploadMeta, validateFileSize, selectCloudinaryResourceType } from '../utils';
-import { FileView, PaginatedFiles, PublicShareResult, ShareResult } from '../dto/file';
+import { FileView, PaginatedFiles, PublicShareResult, ShareResult, StorageUsageView } from '../dto/file';
 import { env } from '../config/env';
 
 export class FileService {
@@ -20,6 +20,8 @@ export class FileService {
       mimeType: data.mimeType,
       size: data.size,
     });
+
+    await FileService.assertQuotaAvailable(data.userId, meta.size);
 
     const storageId = CloudinaryService.generateStorageId();
     const resourceType = selectCloudinaryResourceType(meta.extension);
@@ -62,6 +64,8 @@ export class FileService {
       }
     }
 
+    await FileService.assertQuotaAvailable(data.userId, asset.size);
+
     const authoritativeResourceType = FileService.resolveResourceType(asset.resourceType as CloudinaryResourceType);
 
     const file = await fileRepository.create({
@@ -91,6 +95,15 @@ export class FileService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  static async getStorageUsage(userId: string): Promise<StorageUsageView> {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw AppError.unauthorized('User no longer exists', 'USER_NOT_FOUND');
+    }
+    const usedBytes = await fileRepository.sumOwnedSize(userId);
+    return FileService.buildStorageUsage(usedBytes, user.storageQuotaBytes);
   }
 
   static async getOwnedFile(userId: string, fileId: string): Promise<FileView> {
@@ -198,6 +211,36 @@ export class FileService {
       throw AppError.notFound('File not found', 'FILE_NOT_FOUND');
     }
     return file;
+  }
+
+  private static async assertQuotaAvailable(userId: string, additionalBytes: number): Promise<void> {
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw AppError.unauthorized('User no longer exists', 'USER_NOT_FOUND');
+    }
+    const usedBytes = await fileRepository.sumOwnedSize(userId);
+    const remainingBytes = Math.max(0, user.storageQuotaBytes - usedBytes);
+    if (additionalBytes > remainingBytes) {
+      throw AppError.payloadTooLarge(
+        `Storage quota exceeded. ${usedBytes} of ${user.storageQuotaBytes} bytes used; only ${remainingBytes} bytes remaining.`,
+        'STORAGE_QUOTA_EXCEEDED',
+        {
+          usedBytes,
+          quotaBytes: user.storageQuotaBytes,
+          remainingBytes,
+          requestedBytes: additionalBytes,
+        },
+      );
+    }
+  }
+
+  static buildStorageUsage(usedBytes: number, quotaBytes: number): StorageUsageView {
+    return {
+      usedBytes,
+      quotaBytes,
+      remainingBytes: Math.max(0, quotaBytes - usedBytes),
+      percentUsed: quotaBytes > 0 ? Math.min(100, Math.round((usedBytes / quotaBytes) * 100)) : 0,
+    };
   }
 
   private static resolveResourceType(value?: CloudinaryResourceType): CloudinaryResourceType {

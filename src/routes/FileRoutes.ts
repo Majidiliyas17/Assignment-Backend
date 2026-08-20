@@ -12,6 +12,7 @@ router.use(AuthMiddleware.authenticate);
 router.post('/upload-signature', validate(uploadSignatureSchema), FileController.uploadSignature);
 router.post('/complete', validate(completeUploadSchema), FileController.completeUpload);
 router.get('/', validate(listFilesSchema, 'query'), FileController.listFiles);
+router.get('/usage', FileController.getStorageUsage);
 router.patch('/:id/visibility', validate(visibilitySchema), FileController.setVisibility);
 router.post('/:id/share', FileController.createShare);
 router.delete('/:id/share', FileController.disableShare);

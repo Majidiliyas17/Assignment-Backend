@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { FileEntity } from './FileEntity';
+import { DEFAULT_STORAGE_QUOTA_BYTES } from '../config/env';
 
 @Entity('users')
 export class UserEntity {
@@ -23,6 +24,17 @@ export class UserEntity {
 
   @Column({ type: 'varchar', length: 255, name: 'password_hash', select: false })
   passwordHash: string;
+
+  @Column({
+    type: 'bigint',
+    name: 'storage_quota_bytes',
+    default: DEFAULT_STORAGE_QUOTA_BYTES,
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string | number) => Number(value),
+    },
+  })
+  storageQuotaBytes: number;
 
   @OneToMany(() => FileEntity, (file) => file.owner)
   files: FileEntity[];

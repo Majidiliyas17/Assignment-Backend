@@ -14,6 +14,7 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: optionalString(z.string()),
   CLOUDINARY_API_SECRET: optionalString(z.string()),
   MAX_FILE_SIZE_MB: z.coerce.number().int().positive().default(500),
+  STORAGE_QUOTA_MB: z.coerce.number().int().positive().default(500),
   ALLOWED_EXTENSIONS: optionalString(z.string()),
   APP_BASE_URL: z.string().default('http://localhost:4000'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
@@ -37,6 +38,7 @@ if (!parsed.success) {
 export const env = parsed.data;
 
 export const MAX_FILE_SIZE_BYTES = env.MAX_FILE_SIZE_MB * 1024 * 1024;
+export const DEFAULT_STORAGE_QUOTA_BYTES = env.STORAGE_QUOTA_MB * 1024 * 1024;
 export const IS_PRODUCTION = env.NODE_ENV === 'production';
 export const IS_TEST = env.NODE_ENV === 'test';
 export const IS_DEVELOPMENT = env.NODE_ENV === 'development';

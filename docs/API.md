@@ -105,7 +105,7 @@ Log in and receive a JWT. No authentication.
 
 ### GET /auth/me
 
-Return the authenticated user. **Auth required.**
+Return the authenticated user **and** their storage usage. **Auth required.**
 
 **Headers:** `Authorization: Bearer <jwt>`
 
@@ -115,9 +115,22 @@ Return the authenticated user. **Auth required.**
 {
   "success": true,
   "message": "Current user",
-  "data": { "id": "uuid", "name": "Alice", "email": "alice@example.com", "createdAt": "…" }
+  "data": {
+    "id": "uuid",
+    "name": "Alice",
+    "email": "alice@example.com",
+    "createdAt": "…",
+    "storage": {
+      "usedBytes": 524288,
+      "quotaBytes": 524288000,
+      "remainingBytes": 523763712,
+      "percentUsed": 0
+    }
+  }
 }
 ```
+
+`storage` reflects the user's per-account storage quota (default **500 MB**, configurable per user via `storage_quota_bytes` in the DB / `STORAGE_QUOTA_MB` env for new accounts).
 
 **Errors:** `TOKEN_MISSING` (401) · `INVALID_TOKEN` (401) · `USER_NOT_FOUND` (401)
 
@@ -222,9 +235,12 @@ with exactly these fields in the body:
 | `UNSUPPORTED_FILE_TYPE` | 400    | Extension not allowed / dangerous |
 | `INVALID_MIME_TYPE`     | 400    | MIME does not match extension    |
 | `FILE_TOO_LARGE`        | 413    | `size` > `MAX_FILE_SIZE_MB`      |
+| `STORAGE_QUOTA_EXCEEDED`| 413    | Uploading `size` would exceed the user's remaining storage quota |
 | `CLOUDINARY_SINGLE_UPLOAD_LIMIT_EXCEEDED` | 413 | `size` > Cloudinary's 100 MB single-upload limit |
 | `CLOUDINARY_NOT_CONFIGURED` | 500 | Cloudinary keys not set        |
 | `TOKEN_MISSING` / `INVALID_TOKEN` / `USER_NOT_FOUND` | 401 | Auth failure |
+
+**Storage quota:** each user has a total storage limit (default **500 MB**). The backend rejects any upload (`size` + files already stored) that would exceed it with `413 STORAGE_QUOTA_EXCEEDED`. Query `GET /files/usage` or `GET /auth/me` to read the current usage.
 
 ---
 
@@ -271,6 +287,7 @@ Finalize an upload: verify the asset on Cloudinary and create the file record. C
 | `VALIDATION_ERROR`           | 422    | Invalid body                     |
 | `INVALID_FILENAME` / `UNSUPPORTED_FILE_TYPE` / `INVALID_MIME_TYPE` | 400 | Upload metadata rejected |
 | `SIZE_MISMATCH`              | 400    | Declared size differs from asset > 5% |
+| `STORAGE_QUOTA_EXCEEDED`     | 413    | Stored asset would exceed the user's remaining storage quota |
 | `CLOUDINARY_ASSET_NOT_FOUND` | 400    | Asset missing / still processing / wrong resource type |
 | `CLOUDINARY_VERIFY_FAILED`   | 500    | Cloudinary verification failed      |
 | `CLOUDINARY_NOT_CONFIGURED`  | 500    | Cloudinary keys not set          |
@@ -302,6 +319,38 @@ List the caller's files, newest first. **Auth required.**
 ```
 
 **Errors:** `VALIDATION_ERROR` (422, bad query) · auth codes (401)
+
+---
+
+### GET /files/usage
+
+Return the authenticated user's current storage usage against their quota. **Auth required.**
+
+**Success — `200 OK`**
+
+```json
+{
+  "success": true,
+  "message": "Storage usage retrieved",
+  "data": {
+    "usedBytes": 524288,
+    "quotaBytes": 524288000,
+    "remainingBytes": 523763712,
+    "percentUsed": 0
+  }
+}
+```
+
+| Field            | Type   | Meaning                                        |
+| ---------------- | ------ | ---------------------------------------------- |
+| `usedBytes`      | number | Total bytes of `completed` files owned by the user |
+| `quotaBytes`     | number | User's storage quota in bytes |
+| `remainingBytes` | number | `quotaBytes − usedBytes` (never negative) |
+| `percentUsed`    | number | `0–100`, rounded, `min(100, used/quota×100)` |
+
+Deleting a file frees its size on the next call; completed uploads increase `usedBytes`.
+
+**Errors:** `USER_NOT_FOUND` (401) · auth codes (401)
 
 ---
 

@@ -36,3 +36,10 @@ export interface PublicShareResult {
   file: FileView;
   downloadUrl: string;
 }
+
+export interface StorageUsageView {
+  usedBytes: number;
+  quotaBytes: number;
+  remainingBytes: number;
+  percentUsed: number;
+}
