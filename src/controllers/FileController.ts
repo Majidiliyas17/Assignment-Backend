@@ -32,6 +32,11 @@ export class FileController {
     res.status(200).json(ApiResponse.success(result, 'Files retrieved'));
   });
 
+  static getStorageUsage = asyncHandler(async (req: Request, res: Response) => {
+    const usage = await FileService.getStorageUsage(req.user.id);
+    res.status(200).json(ApiResponse.success(usage, 'Storage usage retrieved'));
+  });
+
   static getById = asyncHandler(async (req: Request, res: Response) => {
     const file = await FileService.getOwnedFile(req.user.id, req.params.id);
     res.status(200).json(ApiResponse.success(file, 'File retrieved'));

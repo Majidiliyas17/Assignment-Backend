@@ -1,5 +1,6 @@
 import { FileEntity } from '../entities/FileEntity';
 import { BaseRepository } from './BaseRepository';
+import { FileStatus } from '../enums';
 
 export interface FileListResult {
   files: FileEntity[];
@@ -19,6 +20,16 @@ export class FileRepository extends BaseRepository<FileEntity> {
       take: limit,
     });
     return { files, total };
+  }
+
+  async sumOwnedSize(ownerId: string): Promise<number> {
+    const row = await this.repo
+      .createQueryBuilder('file')
+      .select('COALESCE(SUM(file.size), 0)', 'total')
+      .where('file.ownerId = :ownerId', { ownerId })
+      .andWhere('file.status = :status', { status: FileStatus.COMPLETED })
+      .getRawOne<{ total: string | number }>();
+    return Number(row?.total ?? 0);
   }
 
   async findByIdAndOwner(id: string, ownerId: string): Promise<FileEntity | null> {

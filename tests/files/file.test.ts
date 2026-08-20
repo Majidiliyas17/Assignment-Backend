@@ -27,6 +27,7 @@ import request from 'supertest';
 import { AppDataSource } from '../../src/config/database';
 import { createApp } from '../../src/app';
 import { initTestDatabase } from '../helpers/db';
+import { UserEntity } from '../../src/entities';
 
 const app = createApp();
 
@@ -40,6 +41,11 @@ const USER_A = {
 };
 const USER_B = {
   name: 'Bob',
+  email: uniqueEmail(),
+  password: 'StrongPassword123!',
+};
+const USER_C = {
+  name: 'Carol',
   email: uniqueEmail(),
   password: 'StrongPassword123!',
 };
@@ -325,6 +331,72 @@ describe('File Management', () => {
 
       const stillThere = await request(app).get(`/api/files/${fileId}`).set(authHeader(tokenA));
       expect(stillThere.status).toBe(200);
+    });
+  });
+
+  describe('Storage quota & usage', () => {
+    const QUOTA_BYTES = 2000;
+    let tokenC: string;
+
+    beforeAll(async () => {
+      tokenC = await registerAndGetToken(USER_C);
+      const repo = AppDataSource.getRepository(UserEntity);
+      const user = await repo.findOneByOrFail({ email: USER_C.email });
+      user.storageQuotaBytes = QUOTA_BYTES;
+      await repo.save(user);
+    });
+
+    it('GET /api/files/usage reports quota and zero usage before any upload', async () => {
+      const res = await request(app).get('/api/files/usage').set(authHeader(tokenC));
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual({
+        usedBytes: 0,
+        quotaBytes: QUOTA_BYTES,
+        remainingBytes: QUOTA_BYTES,
+        percentUsed: 0,
+      });
+    });
+
+    it('GET /api/auth/me includes the storage usage object', async () => {
+      const res = await request(app).get('/api/auth/me').set(authHeader(tokenC));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.storage).toEqual({
+        usedBytes: 0,
+        quotaBytes: QUOTA_BYTES,
+        remainingBytes: QUOTA_BYTES,
+        percentUsed: 0,
+      });
+    });
+
+    it('reflects completed uploads in the usage numbers', async () => {
+      await completeUpload(tokenC, { publicId: 'file-storage/owner/quota-1' });
+
+      const res = await request(app).get('/api/files/usage').set(authHeader(tokenC));
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.usedBytes).toBe(1234);
+      expect(res.body.data.remainingBytes).toBe(QUOTA_BYTES - 1234);
+    });
+
+    it('rejects upload-signature when the file would exceed the storage quota with 413', async () => {
+      const remainingBytes = QUOTA_BYTES - 1234;
+      const res = await request(app)
+        .post('/api/files/upload-signature')
+        .set(authHeader(tokenC))
+        .send({ filename: 'overflow.pdf', mimeType: 'application/pdf', size: remainingBytes + 1 });
+
+      expect(res.status).toBe(413);
+      expect(res.body.error.code).toBe('STORAGE_QUOTA_EXCEEDED');
+    });
+
+    it('rejects complete when the stored asset would exceed the storage quota with 413', async () => {
+      const res = await completeUpload(tokenC, { publicId: 'file-storage/owner/quota-overflow' });
+
+      expect(res.status).toBe(413);
+      expect(res.body.error.code).toBe('STORAGE_QUOTA_EXCEEDED');
     });
   });
 });
