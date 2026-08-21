@@ -302,8 +302,14 @@ Quick map (base `/api`):
 | `NODE_ENV`                  | —        | `development`            | `development / test / production`             |
 | `PORT`                      | —        | `4000`                   | HTTP port                                     |
 | `DATABASE_URL`              | for DB   | —                        | PostgreSQL connection string (Neon)           |
+| `DATABASE_ENVIRONMENT`      | production | —                      | Must be `production` in production; label preview/dev DBs accordingly |
+| `DATABASE_EXPECTED_HOST`    | production | —                      | Production DB host expected in `DATABASE_URL` (no credentials) |
+| `DATABASE_EXPECTED_NAME`    | production | —                      | Production database name expected in `DATABASE_URL` |
 | `JWT_SECRET`                | ✅       | —                        | ≥16 chars (≥32 in production, enforced)       |
+| `JWT_SECRET_VERSION`        | —        | `unversioned`            | Stable non-secret label logged at startup; change only when rotating JWT secret |
 | `JWT_EXPIRES_IN`            | —        | `1d`                     | Token lifetime (jsonwebtoken format)          |
+| `BCRYPT_ROUNDS`             | —        | `12`                     | bcrypt cost, integer from 10 to 14; keep stable between deploys |
+| `REQUIRE_MIGRATIONS_CURRENT`| —        | `true`                   | Refuses startup when migrations have not been applied |
 | `CLOUDINARY_CLOUD_NAME`     | for files| —                        | Cloudinary cloud name                         |
 | `CLOUDINARY_API_KEY`        | for files| —                        | Cloudinary API key                            |
 | `CLOUDINARY_API_SECRET`     | for files| —                        | Cloudinary API secret                         |
@@ -353,6 +359,40 @@ Server starts on `http://localhost:4000` (health check: `GET /api/health`).
 
 4. SSL is auto-enabled when the host contains `neon.tech` (or in production).
 
+## Production database and deploy safety
+
+Production never creates or resets a database at application startup: TypeORM has `synchronize: false`, `dropSchema: false`, and `migrationsRun: false`. Startup performs a read-only migration check and refuses to serve production traffic if the configured database is unavailable, not the expected host/name, or has pending migrations. This prevents a release from quietly connecting to an empty or preview database.
+
+Configure the platform's **production** environment (not a build-time `.env` file) with persistent values. Do not enable any provider option that creates a fresh database/branch for each deployment.
+
+```env
+NODE_ENV=production
+DATABASE_ENVIRONMENT=production
+DATABASE_URL=postgresql://USER:PASSWORD@production-db-host/production-db?sslmode=require
+DATABASE_EXPECTED_HOST=production-db-host
+DATABASE_EXPECTED_NAME=production-db
+JWT_SECRET=<stable-random-secret-kept-across-deploys>
+JWT_SECRET_VERSION=2026-08-21
+JWT_EXPIRES_IN=1d
+BCRYPT_ROUNDS=12
+REQUIRE_MIGRATIONS_CURRENT=true
+```
+
+Create separate persistent database instances (or, where supported, separate projects/branches) and credentials for development, preview, and production. Set `DATABASE_ENVIRONMENT=development` or `preview` outside production and never copy the production `DATABASE_URL` into those environments. The production host and name guards above must identify only the production database.
+
+Release sequence (run the migration job once, before starting new application instances):
+
+```bash
+npm ci
+npm run build
+npm run migration:run:prod
+npm start
+```
+
+Use only forward migrations in production. Do **not** run `migration:revert`, `schema:drop`, `prisma db push --force-reset`, `sequelize.sync({ force: true })`, or any database/branch recreation command against the production URL. Take a backup/snapshot before a migration.
+
+The startup log contains only `environment`, database host/name, database environment label, migration status/count, bcrypt rounds, and JWT secret version. It never logs a connection string, password hash, token, or secret. Login responses remain generic, while server logs identify `user_not_found`, `password_hash_mismatch`, or `database_connection_or_config_issue` without recording the email or password.
+
 ---
 
 ## Cloudinary Setup
@@ -380,6 +420,8 @@ Server starts on `http://localhost:4000` (health check: `GET /api/health`).
 | `npm run migration:generate -- src/migrations/<Name>` | Generate a migration from entity changes |
 
 The initial migration (`Init`) creates the `files`, `users` tables and enum types.
+
+`migration:revert` is for local recovery only; never use it with production credentials.
 
 ---
 
