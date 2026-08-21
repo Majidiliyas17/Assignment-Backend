@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { AppDataSource } from './config/database';
+import { AppDataSource, assertExpectedProductionDatabase, getMigrationStatus } from './config/database';
 import { env } from './config/env';
 import { createApp } from './app';
 import { logger } from './utils/logger';
@@ -9,10 +9,31 @@ const startServer = async (): Promise<void> => {
 
   if (env.DATABASE_URL) {
     try {
+      const database = assertExpectedProductionDatabase();
       await AppDataSource.initialize();
+      const migrations = await getMigrationStatus();
+      logger.info(
+        {
+          environment: env.NODE_ENV,
+          databaseHost: database?.host,
+          databaseName: database?.name,
+          databaseEnvironment: env.DATABASE_ENVIRONMENT ?? 'not_set',
+          migrationStatus: migrations.status,
+          appliedMigrations: migrations.applied,
+          totalMigrations: migrations.total,
+          bcryptRounds: env.BCRYPT_ROUNDS,
+          jwtSecretVersion: env.JWT_SECRET_VERSION,
+        },
+        'Startup configuration verified',
+      );
+      if (env.REQUIRE_MIGRATIONS_CURRENT && migrations.status !== 'current') {
+        throw new Error(`Database migrations are ${migrations.status}; run the production migration command before starting`);
+      }
       logger.info('Database connection established');
     } catch (err) {
-      logger.error({ err }, 'Failed to initialize database - starting without it');
+      logger.error({ errorName: err instanceof Error ? err.name : 'UnknownError' }, 'Database startup verification failed');
+      if (AppDataSource.isInitialized) await AppDataSource.destroy();
+      if (env.NODE_ENV === 'production') process.exit(1);
     }
   } else {
     logger.warn('DATABASE_URL is not set - running without a database connection');

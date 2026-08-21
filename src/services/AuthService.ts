@@ -3,9 +3,9 @@ import { userRepository } from '../repositories';
 import { UserEntity } from '../entities';
 import { AppError } from '../utils';
 import { TokenUtils } from '../utils';
+import { logger } from '../utils/logger';
+import { env } from '../config/env';
 import { AuthResult, SafeUser } from '../dto/auth';
-
-const BCRYPT_ROUNDS = 12;
 
 export class AuthService {
   static async register(input: { name: string; email: string; password: string }): Promise<AuthResult> {
@@ -14,7 +14,7 @@ export class AuthService {
       throw AppError.conflict('An account with this email already exists', 'EMAIL_ALREADY_REGISTERED');
     }
 
-    const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+    const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
     const user = await userRepository.create({
       name: input.name,
       email: input.email,
@@ -28,13 +28,31 @@ export class AuthService {
   }
 
   static async login(input: { email: string; password: string }): Promise<AuthResult> {
-    const user = await userRepository.findByEmailWithPassword(input.email);
+    let user: UserEntity | null;
+    try {
+      user = await userRepository.findByEmailWithPassword(input.email);
+    } catch (error) {
+      logger.error(
+        { authEvent: 'database_connection_or_config_issue', errorName: error instanceof Error ? error.name : 'UnknownError' },
+        'Login database lookup failed',
+      );
+      throw AppError.internal();
+    }
     if (!user) {
+      logger.warn({ authEvent: 'user_not_found' }, 'Login rejected');
       throw AppError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
-    const isPasswordValid = await bcrypt.compare(input.password, user.passwordHash);
+    let isPasswordValid: boolean;
+    try {
+      // Compare plaintext to the stored bcrypt hash. Never hash the input again.
+      isPasswordValid = await bcrypt.compare(input.password, user.passwordHash);
+    } catch (error) {
+      logger.error({ authEvent: 'password_hash_comparison_failed', errorName: error instanceof Error ? error.name : 'UnknownError' }, 'Login password verification failed');
+      throw AppError.internal();
+    }
     if (!isPasswordValid) {
+      logger.warn({ authEvent: 'password_hash_mismatch' }, 'Login rejected');
       throw AppError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
