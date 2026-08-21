@@ -7,6 +7,25 @@ import { logger } from './utils/logger';
 const startServer = async (): Promise<void> => {
   const app = createApp();
 
+  // Hostinger requires the HTTP port to be bound quickly. Database verification
+  // continues immediately afterwards and still terminates an invalid production release.
+  const server = app.listen(env.PORT, () => {
+    logger.info(`Server listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
+  });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error({ err }, `Port ${env.PORT} is already in use`);
+    } else {
+      logger.error({ err }, 'Failed to start HTTP server');
+    }
+    if (AppDataSource.isInitialized) {
+      AppDataSource.destroy().finally(() => process.exit(1));
+    } else {
+      process.exit(1);
+    }
+  });
+
   if (env.DATABASE_URL) {
     try {
       const database = assertExpectedProductionDatabase();
@@ -38,23 +57,6 @@ const startServer = async (): Promise<void> => {
   } else {
     logger.warn('DATABASE_URL is not set - running without a database connection');
   }
-
-  const server = app.listen(env.PORT, () => {
-    logger.info(`Server listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
-  });
-
-  server.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      logger.error({ err }, `Port ${env.PORT} is already in use`);
-    } else {
-      logger.error({ err }, 'Failed to start HTTP server');
-    }
-    if (AppDataSource.isInitialized) {
-      AppDataSource.destroy().finally(() => process.exit(1));
-    } else {
-      process.exit(1);
-    }
-  });
 
   const shutdown = (signal: string): void => {
     logger.info(`${signal} received, shutting down gracefully...`);
